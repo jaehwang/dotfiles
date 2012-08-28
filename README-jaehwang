@@ -1,0 +1,22 @@
+Bug fixes
+---------
+
+설치할 때 외부 서버에서 다운 받지 못해서 생긴 문제들로 보임.
+아래의 경우 별 수작업 실행.
+
+* setcolors.vim
+
+  Save
+    https://github.com/juniorbird/dotfiles/blob/master/vim/plugins/setcolors.vim
+  in
+    .vim/plugins/setcolors.vim
+
+* vim-latex 
+
+  cd .vim/vim-addons
+  git clone git://vim-latex.git.sourceforge.net/gitroot/vim-latex/vim-latex
+
+* snipMate: .vim/vim
+
+  cd .vim/vim-addons
+  ln -s snipmate snipMate
