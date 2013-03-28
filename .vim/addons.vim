@@ -65,22 +65,36 @@ fun! SetupAddons()
     " See: http://superuser.com/questions/157676/change-color-scheme-when-calling-vimdiff-inside-vim
     let g:diff_colors_name  = g:mySetColorsDiff[0]
     let g:prior_colors_name = g:colors_name
-    autocmd FilterWritePost,BufEnter,WinEnter,WinLeave *
-          \ if &diff && g:mySetColors is g:mySetColorsNormal |
-          \   let g:prior_colors_name = g:colors_name |
-          \   let g:mySetColors = g:mySetColorsDiff   |
-          \   exec 'colorscheme' g:diff_colors_name |
-          \ elseif !&diff && g:mySetColors is g:mySetColorsDiff |
-          \   let g:diff_colors_name = g:colors_name |
-          \   let g:mySetColors = g:mySetColorsNormal |
-          \   exec 'colorscheme' g:prior_colors_name |
-          \ endif
+    fun! s:DetectDiffColorScheme()
+      if &diff && g:mySetColors is g:mySetColorsNormal
+        let g:prior_colors_name = g:colors_name
+        let g:mySetColors = g:mySetColorsDiff
+        exec 'colorscheme' g:diff_colors_name
+      elseif !&diff && g:mySetColors is g:mySetColorsDiff
+        let g:diff_colors_name = g:colors_name
+        let g:mySetColors = g:mySetColorsNormal
+        exec 'colorscheme' g:prior_colors_name
+      endif
+      " XXX if exists("*Powerline") | call Powerline(winnr(), winnr()) | endif
+    endfun
+    command! DetectDiffColorScheme call s:DetectDiffColorScheme()
+    autocmd FilterWritePost,BufEnter,WinEnter,WinLeave *  DetectDiffColorScheme
+    nnoremap <Space>d :diffoff \| DetectDiffColorScheme<CR>
+  if has("gui_running")
+    ActivateAddons powerline
+    set laststatus=2 noshowmode showcmd
+    let &guifont = join(map(split(&guifont,","),
+          \ 'split(v:val,":")[0]." for Powerline:".split(v:val,":")[1]'),",")
+    "let g:Powerline_symbols = 'fancy'
+  endif
 
 
   """ Productivity boosters
+  if has("python")
   ActivateAddons Gundo
     let g:gundo_close_on_revert = 1
     nnoremap <Space>u :GundoToggle<CR>
+  endif
   ActivateAddons bufexplorer.zip
     nnoremap <Space>b :BufExplorerHorizontalSplit<CR>
   ActivateAddons Tagbar
@@ -88,12 +102,24 @@ fun! SetupAddons()
     nnoremap <Space>T :TagbarToggle<CR>
   " unimpaired quickfix access with [q, ]q, [Q, ]Q
   ActivateAddons unimpaired
+    " Eclipse-style movement
+    nmap <M-Up>   V<M-Up>
+    nmap <M-Down> V<M-Down>
+    vmap <M-Up>   [egv
+    vmap <M-Down> ]egv
+    imap <M-Up>   <C-\><C-N>[egi
+    imap <M-Down> <C-\><C-N>]egi
+    if has("mac")
+      let g:macvim_skip_cmd_opt_movement = 1 " http://superuser.com/questions/310364/switch-buffers-in-macvim
+    endif
+    
 
     " Align%294's \m= collides with Mark%2666 unless already mapped
     map <Leader>tm= <Plug>AM_m=
   ActivateAddons Align%294
   ActivateAddons surround
   ActivateAddons repeat
+  ActivateAddons vim-visual-star-search
   ActivateAddons EasyMotion
     let g:EasyMotion_leader_key = '<Space>w'
   ActivateAddons matchit.zip
@@ -156,7 +182,7 @@ fun! SetupAddons()
     nnoremap <Space>e :NERDTreeFind<CR>
     let g:NERDTreeQuitOnOpen = 1
     let g:NERDTreeShowHidden = 1
-    let g:NERDTreeChDirMode  = 2
+    let g:NERDTreeChDirMode  = 1
     let g:NERDTreeSortOrder = ['*', '\.swp$', '\.bak$', '\~$'] " don't put directories on top
     let g:NERDTreeIgnore = ['^.*\.sw[p-z]$', '^\..*\.un\~'] " ignore vim swap and undo files
     " easier preview key mapping
@@ -164,12 +190,16 @@ fun! SetupAddons()
     autocmd BufEnter NERD_tree_* map <buffer> <Space>s       gi
     autocmd BufEnter NERD_tree_* map <buffer> <Space>v       gv
   ActivateAddons renamer
+  ActivateAddons recover
   ActivateAddons snipmate
   "ActivateAddons vmark.vim_Visual_Bookmarking " XXX beware: <F2>/<F3> is overrided
   " TODO let b:vm_guibg = yellow
   "if has("ruby")
   "  ActivateAddons tips
   "end
+  ActivateAddons localvimrc
+    let g:localvimrc_persistent = 1
+    let g:localvimrc_sandbox = 0
 
   """ Git, Github
   ActivateAddons fugitive
@@ -189,6 +219,12 @@ fun! SetupAddons()
     nnoremap <Space>gL :Glog --<CR>
     nnoremap <Space>ge :Gedit<CR>
     nnoremap <Space>gE :Gedit 
+  ActivateAddons git:git://github.com/airblade/vim-gitgutter.git
+    let g:gitgutter_enabled = 1
+    nnoremap <Space><C-g><C-g> :ToggleGitGutter<CR>
+    nnoremap <Space><C-g>g     :ToggleGitGutterLineHighlights<CR>
+    nnoremap ]g :GitGutterNextHunk<CR>
+    nnoremap [g :GitGutterPrevHunk<CR>
   ActivateAddons Gist WebAPI
     let g:gist_clip_command = 'pbcopy'
     let g:gist_open_browser_after_post = 1
@@ -209,77 +245,128 @@ fun! SetupAddons()
 
   ActivateAddons markdown@tpope " Markdown vim-ft-markdown_fold
     " Marked
-    au! FileType markdown
+    au FileType markdown
       \ setlocal spell |
     if has("mac")
-      au! FileType markdown
-        \ map <D-e> :!open -a Marked '%'<CR><CR>
+      au FileType markdown
+        \ nnoremap <D-e> :!open -a Marked '%'<CR><CR>|
+        \ noremap! <D-e> <C-\><C-N><D-e>gi|
+        \ call sparkup#Setup()|
     endif
   ActivateAddons JSON
-    au! BufRead,BufNewFile *.json setfiletype json
+    au BufRead,BufNewFile *.json setfiletype json
 
   ActivateAddons vim-coffee-script
+    au BufRead,BufNewFile *.coffee syntax sync fromstart
     " CoffeeScript autocompilation
     "autocmd BufWritePost *.coffee silent CoffeeMake! | cwindow
+  ActivateAddons jade
   ActivateAddons applescript
-    au! BufRead,BufNewFile *.applescript setfiletype applescript
+    au BufRead,BufNewFile *.applescript setfiletype applescript
   ActivateAddons vim-addon-scala
     " Scala (See: http://mdr.github.com/scalariform/)
     au BufEnter *.scala setl formatprg=scalariform\ --forceOutput
+  ActivateAddons octave%3600
+    au BufRead,BufNewFile *.oct,*.m setlocal filetype=octave
 
-  " Vim-LaTeX
-  " See-Also: http://michaelgoerz.net/refcards/vimlatexqrc.pdf
+  " Vim-LaTeX is a comprehensive plugin for working with LaTeX
+  " See: http://vim-latex.sourceforge.net/documentation/latex-suite/
   ActivateAddons LaTeX-Suite_aka_Vim-LaTeX
-    au! FileType tex
-      \ setlocal spell textwidth=76 |
-      \ set suffixes+=.pdf,.dvi,.ps,.ps.gz,.aux,.bbl,.blg,.log,.out,.ent,.fdb_latexmk,.brf " TeX by-products
-    if has("mac")
-      " Use Skim as our PDF viewer and latexmk to compile
-      let g:Tex_ViewRule_pdf="Skim"
-      " In Skim's preferences, use the following for PDF-TeX Sync Support
-      " Command: /opt/homebrew/bin/mvim
-      " Arguments: $(osascript -e 'tell application "MacVim" to get name of front window' | sed 's/.* - /--servername /') --remote-silent +":%line|silent!.foldopen!|" "%file"
-      " Command must be a full path name to mvim unless you put it in a system location such as /usr/bin.
-      " Arguments has a fancy applescript to open on the active MacVim window.
-      for fmt in split("pdf ps dvi")
-        let g:Tex_CompileRule_{fmt}=""
-              \."source ~/.bashrc && cd \"$(dirname $*)\" && "
-              \."latexmk"
-              \." -latexoption='-synctex=1 -interaction=nonstopmode'"
-              \." -".fmt
-              \." $*"
-      endfor
-      " for quick compile/view/sync with latexmk
-      fun! g:LaTeX_Build()
-        write
-        let oldmore=&more | set nomore
-        exec "make ".escape(Tex_GetMainFileName(),' \')
-        let &more=oldmore
-      endfun
-      fun! g:LaTeX_BuildAndView()
-        call g:LaTeX_Build()
-        set filetype=tex
-        call Tex_ForwardSearchLaTeX()
-      endfun
-      " and some key bindings with Command-key
-      fun! s:LaTeX_SetupKeyBindings()
-        map <D-e>   <F5>| map! <D-e>   <F5>
-        map <D-E> <S-F5>| map! <D-E> <S-F5>
-        map <D-r>   <F7>| map! <D-r>   <F7>
-        map <D-R> <S-F7>| map! <D-R> <S-F7>
-        map <D-®>   <F9>| map! <D-®>   <F9>
-        imap <D-j> <Plug>IMAP_JumpBack
-        let keyMappings = {}
-        let keyMappings[  '<D-CR>'] = 'g:LaTeX_Build'
-        let keyMappings['<S-D-CR>'] = 'g:LaTeX_BuildAndView'
-        for [key,fn] in items(keyMappings)
-          exec 'nnoremap '.key.'           :call '.fn.'()<CR><CR>:cwindow<CR>'
-          exec 'xnoremap '.key.'           :call '.fn.'()<CR><CR>gv'
-          exec 'inoremap '.key.' <C-\><C-N>:call '.fn.'()<CR><CR>gi'
+    let g:Tex_IgnoreLevel = 0
+    let g:Tex_IgnoreUnmatched = 0
+    let g:Tex_Folding = 1
+    let g:Tex_AutoFolding = 0
+    fun! s:LaTeX_Build()
+      norm m`m[
+      let oldmore=&more | set nomore
+      exec "make! ".escape(Tex_GetMainFileName(),' \')
+      let &more=oldmore
+      norm m]g``
+    endfun
+    fun! s:LaTeX_BuildAndView()
+      call s:LaTeX_Build()
+      set filetype=tex
+      call Tex_ForwardSearchLaTeX()
+    endfun
+    command! LaTeXBuild        call s:LaTeX_Build()
+    command! LaTeXBuildAndView call s:LaTeX_BuildAndView()
+    fun! s:LaTeX_Setup()
+      setlocal spell autowrite textwidth=0 formatoptions-=t formatoptions-=c
+      if has("linebreak")
+        setlocal wrap linebreak showbreak=...\  cpoptions+=n
+        " See: http://stackoverflow.com/questions/5706820/using-vim-isnt-there-a-more-efficient-way-to-format-latex-paragraphs-according
+        if has("gui") | let &l:showbreak="\u21aa   " | endif " use a better unicode character:↪
+        " Move cursor based on displayed lines
+        for key in split("j k 0 $")
+          exec 'noremap <buffer>  '.key.' g'.key
+          exec 'noremap <buffer> g'.key.'  '.key
         endfor
-      endfun
-      au! FileType tex call s:LaTeX_SetupKeyBindings()
-    endif
+      endif
+      let suffixes = ".pdf,.dvi,.ps,.ps.gz"
+                  \.",.aux,.bbl,.blg,.log,.out,.ent"
+                  \.",.fdb_latexmk,.fls,.brf,.synctex.gz"
+      if stridx(&suffixes, suffixes) == -1
+        exec "setlocal suffixes+=".suffixes
+        let patt = '\('. join(map(split(suffixes,','),
+              \                   '"\\".v:val'), '\|') .'\)$'
+        let g:NERDTreeSortOrder += [patt]
+      endif
+      " better LaTeX formatting, perhaps with a custom formatprg
+      "   See: http://stackoverflow.com/questions/5706820/using-vim-isnt-there-a-more-efficient-way-to-format-latex-paragraphs-according
+      "   See: http://stackoverflow.com/questions/1451827/vim-make-gq-treat-as-the-end-of-a-sentence
+      let &l:formatprg = '~/.vim/format-latex.pl'
+      "   See: http://denihow.com/vim-gq-command-to-re-wrap-paragraph-and-latex/
+      "   See: http://superuser.com/questions/422214/vim-gq-command-to-re-wrap-paragraph-and-latex
+      let &l:formatlistpat = '^\s*\\\ze\(end\|item\)\>'
+      setlocal formatoptions+=n
+      " Use LaTeX folds
+      nmap <buffer><silent> <Space>z  <Plug>Tex_RefreshFolds
+      " Use latexmk and enable synctex
+      for fmt in split("pdf ps dvi")
+        let g:Tex_CompileRule_{fmt}="~/.vim/latexmk.sh ".fmt." $*"
+      endfor
+      if has("mac")
+        " Use Skim as our PDF viewer and latexmk to compile
+        TCTarget pdf
+        let g:Tex_ViewRule_pdf="Skim"
+        " In Skim's preferences, use the following for PDF-TeX Sync Support
+        " Command: /opt/homebrew/bin/mvim
+        " Arguments: $(osascript -e 'tell application "MacVim" to get name of front window' | sed 's/.* - /--servername /') --remote-silent +"%line|exec 'norm zz'|silent!.foldopen!|" +"norm zz" "%file"
+        " Command must be a full path name to mvim unless you put it in a system location such as /usr/bin.
+        " Arguments has a fancy applescript to open on the active MacVim window.
+        " some key bindings with Command-key
+        map  <buffer><silent> <D-e> <Plug>Tex_FastEnvironmentInsert
+        map! <buffer><silent> <D-e> <Plug>Tex_FastEnvironmentInsert
+        map  <buffer><silent> <D-E> <Plug>Tex_FastEnvironmentChange
+        map! <buffer><silent> <D-E> <Plug>Tex_FastEnvironmentChange
+        map  <buffer><silent> <D-r> <Plug>Tex_FastCommandInsert
+        map! <buffer><silent> <D-r> <Plug>Tex_FastCommandInsert
+        map  <buffer><silent> <D-R> <Plug>Tex_FastCommandChange
+        map! <buffer><silent> <D-R> <Plug>Tex_FastCommandChange
+        map! <buffer><silent>  <Plug>Tex_Completion
+        map  <buffer><silent> <D-j> <Plug>IMAP_JumpForward
+        map  <buffer><silent> <D-k> <Plug>IMAP_JumpBack
+        map! <buffer><silent> <D-j> <Plug>IMAP_JumpForward
+        map! <buffer><silent> <D-k> <Plug>IMAP_JumpBack
+        " and ones for quick compile/view/sync with latexmk
+        let keyMappings = {}
+        let keyMappings[  '<D-CR>'] = 'LaTeXBuild'
+        let keyMappings['<S-D-CR>'] = 'LaTeXBuildAndView'
+        for [key,cmd] in items(keyMappings)
+          exec 'nnoremap <buffer> '.key.'           :'.cmd.'<CR><CR>:cwindow<CR>'
+          exec 'xnoremap <buffer> '.key.' <C-\><C-N>:'.cmd.'<CR><CR>gv'
+          exec 'snoremap <buffer> '.key.' <C-\><C-N>:'.cmd.'<CR><CR>gv<C-G>'
+          exec 'inoremap <buffer> '.key.' <C-\><C-N>:'.cmd.'<CR><CR>gi'
+        endfor
+      endif
+    endfun
+    au FileType tex call s:LaTeX_Setup()
+  " Automatic LaTeX Plugin for Vim and LaTeX_Box is also nice supporting
+  " latexmk directly, vim-like motions, mappings, etc.  but I find it a little
+  " premature yet (e.g., ShowErrors didn't work for me)
+  " See: http://atp-vim.sourceforge.net
+  "ActivateAddons AutomaticLaTeXPlugin
+  "ActivateAddons LaTeX_Box
 
 endfun
 
@@ -369,7 +456,9 @@ fun! SetupVAM()
   "    ..ActivateAddons(["github:user/repo", .. => github://user/repo
   " Also see section "2.2. names of addons and addon sources" in VAM's documentation
 endfun
+try
 call SetupVAM()
+endtry
 " experimental [E1]: load plugins lazily depending on filetype, See
 " NOTES
 " experimental [E2]: run after gui has been started (gvim) [3]

@@ -15,21 +15,6 @@ if v:progname =~? "evim" | finish | endif
 
 set nocompatible        " This is Vi IMproved, not Vi :^)
 
-" Command and key combo for loading the vim-addon-manager aka VAM
-" VAM's auto_install can interrupt many scripts relying on vim, so loading
-" only when used interactively.  You could add LoadAddons to ~/.vim_local, but
-" adding an alias to the shell is recommended: >
-"   export EDITOR='env VIMADDONS=1 vim'
-"   alias vim=$EDITOR
-"<
-command! LoadAddons  silent! delfunction SetupAddons|
-      \source ~/.vim/addons.vim|
-"      \silent! norm :unmap <S<BS>Space><S<BS>Space><CR>|
-noremap <Space><Space> :LoadAddons<CR>
-if has("gui_running") || exists("$VIMADDONS")
-  LoadAddons
-endif
-
 " source optional files
 fun! SourceOptional(files)
   for f in a:files | if filereadable(expand(f)) | exec 'source '.f | endif | endfor
@@ -71,8 +56,11 @@ set expandtab
 set listchars=tab:>.,eol:$
 
 " expansions
-set wildmode=full,list:full
-set wildchar=<TAB>
+set wildmode=list:full
+set wildchar=<Tab>
+if has("&wildignorecase")
+  set wildignorecase
+endif
 
 "  some by-product files
 set suffixes+=.o,.a     " object and archive files
@@ -150,34 +138,40 @@ nnoremap <Leader><C-l>  :map <L<BS>Leader><CR>
 
 " Mode Toggler Keys
 fun! ModeToggleKey(mode, lhs)
-  exec 'nnoremap '.a:lhs.'      :set '.a:mode.'!<CR>:set '.a:mode.'?<CR>'
-  exec 'inoremap '.a:lhs.' <C-o>:set '.a:mode.'!<CR>'
+  for [prefix,cmd] in [['<C-\>','setlocal'], ['<C-\><C-G>', 'set']]
+    exec 'nnoremap '.prefix.a:lhs.' :'.cmd.' '.a:mode.'!<CR>'
+          \                       .':'.cmd.' '.a:mode.'?<CR>'
+    exec 'imap     '.prefix.a:lhs.' <C-\><C-N>'.prefix.a:lhs.'gi'
+    exec 'vmap     '.prefix.a:lhs.' <C-\><C-N>'.prefix.a:lhs.'gv'
+  endfor
 endfun
 command! -nargs=+ -complete=option ModeToggleKey  :call ModeToggleKey(<f-args>)
 
-" toggle display of unprintable characters
-ModeToggleKey autoread        <C-\>&
-ModeToggleKey autowrite       <C-\>!
-ModeToggleKey autowriteall    <C-\>!!
-ModeToggleKey binary          <C-\>@
-ModeToggleKey cursorbind      <C-\>.
-ModeToggleKey cursorline      <C-\>:
-ModeToggleKey cursorcolumn    <C-\>,
-ModeToggleKey diff            <C-\><C-d>
-ModeToggleKey foldenable      <C-\><C-z>
-ModeToggleKey list            <C-\><Space>
-ModeToggleKey modifiable      <C-\><C-m>
-ModeToggleKey number          <C-\>1
-ModeToggleKey paste           <C-\><C-]>
-ModeToggleKey readonly        <C-\><C-r>
-ModeToggleKey ruler           <C-\>%
-ModeToggleKey scrollbind      <C-\>+
-ModeToggleKey spell           <C-\>=
-ModeToggleKey swapfile        <C-\>$
-ModeToggleKey undofile        <C-\><C-u>
-ModeToggleKey winfixwidth     <C-\>\|
-ModeToggleKey winfixheight    <C-\>_
-ModeToggleKey wrap            <C-\><C-\>
+" toggle options with <C-\> followed by the individual key
+ModeToggleKey autoread        <C-e>
+ModeToggleKey autowrite       <C-w>
+ModeToggleKey autowriteall    W
+ModeToggleKey binary          @
+ModeToggleKey cursorbind      .
+ModeToggleKey cursorline      :
+ModeToggleKey cursorcolumn    ,
+ModeToggleKey diff            <C-d>
+ModeToggleKey foldenable      <C-z>
+ModeToggleKey list            <Space>
+ModeToggleKey list            <C-Space>
+ModeToggleKey list            <C-@>
+ModeToggleKey modifiable      <C-m>
+ModeToggleKey number          1
+ModeToggleKey paste           <C-]>
+ModeToggleKey readonly        <C-r>
+ModeToggleKey ruler           %
+ModeToggleKey scrollbind      +
+ModeToggleKey spell           =
+ModeToggleKey swapfile        $
+ModeToggleKey undofile        <C-u>
+ModeToggleKey winfixwidth     \|
+ModeToggleKey winfixheight    _
+ModeToggleKey wrap            <C-\>
 
 " Fold
 nnoremap <Space>z      :set foldmethod=indent<CR>
@@ -186,14 +180,14 @@ nnoremap <Space><C-z>  :set foldmethod=manual<CR>
 
 " Fix syntax highlighting by doing it from start of file
 " See: http://vim.wikia.com/wiki/Fix_syntax_highlighting
-nnoremap <C-\>s      :syntax sync fromstart<CR>
-inoremap <C-\>s <C-o>:syntax sync fromstart<CR>
+nnoremap <Space>s      :syntax sync fromstart<CR>
 
 " Toggle hlsearch (highlight search matches).
-nnoremap <Space>* :nohlsearch<CR>
+nnoremap <Space>*      :nohlsearch<CR>
 
 " Easy open and close of the QuickFix window
-nnoremap <Space>q :copen<CR>
+nnoremap <Space>q      :copen<CR>
+nnoremap <Space>l      :lopen<CR>
 au! BufWinEnter *
       \ if &buftype == "quickfix" |
       \   nnoremap <buffer> <silent> q :close<CR>|
@@ -251,7 +245,10 @@ if has("autocmd")
     \ endif
 
   " Play nice with crontab: "temp file must be edited in place"
-  autocmd FileType crontab set nobackup nowritebackup
+  autocmd FileType crontab setlocal nobackup nowritebackup
+
+  " Don't worry about spelling in Git commit messages
+  autocmd FileType gitcommit setlocal spell
 
 endif " has("autocmd")
 
@@ -268,6 +265,24 @@ if exists("vimpager")
   set timeout timeoutlen=0
 endif
 
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Vim Addons/Scripts/Plugins                                                  "
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Command and key combo for loading the vim-addon-manager aka VAM
+" VAM's auto_install can interrupt many scripts relying on vim, so loading
+" only when used interactively.  You could add LoadAddons to ~/.vim_local, but
+" adding an alias to the shell is recommended: >
+"   export EDITOR="$HOME/.vim/vim+addons"
+"   alias vim='VIMADDONS=1 vim'
+"<
+command! LoadAddons  silent! delfunction SetupAddons|
+      \source ~/.vim/addons.vim|
+"      \silent! norm :unmap <S<BS>Space><S<BS>Space><CR>|
+noremap <Space><Space> :LoadAddons<CR>
+if has("gui_running") || exists("$VIMADDONS")
+  LoadAddons
+endif
 
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
