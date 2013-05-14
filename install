@@ -4,8 +4,8 @@
 # Created: 2006-05-21
 set -eu
 
-DotfilesRoot=$(cd "$(dirname "$0")" >/dev/null; pwd)
-Home=$(cd >/dev/null; pwd)
+DotfilesRoot=$(cd "$(dirname "$0")" >/dev/null; pwd -P)
+Home=$(cd >/dev/null; pwd -P)
 
 ### some vocabularies first ###################################################
 
@@ -27,6 +27,7 @@ if [[ $DotfilesRoot != $Home/.dotfiles ]]; then
 else
     dotfilesRel=.dotfiles
 fi
+DotfilesSkipList="$DotfilesRoot/skip"
 install() {
     local dst=$1
     local src=${2:-$dst}
@@ -39,6 +40,8 @@ install() {
         */*) # need relative path to DotfilesRoot if path has depth
         local dd=$(dirname "$dst")
         mkdir -p ~/"$dd"
+        dd=$(cd ~/"$dd" >/dev/null && pwd -P)
+        dd=${dd#$Home/}
         case $dotfilesRel in
             /*)
                 # no $rel prefix needed for an absolute path
@@ -55,8 +58,12 @@ install() {
         echo "$dst installed"
         run ${n}_after "$@"
     else
-        while read -p "install $dst? [yNq] " -n1; do
-            echo
+        if grep -qF "$dst" "$DotfilesSkipList" &>/dev/null; then
+            echo "$dst skipped"
+            return
+        fi
+        while read -p "install $dst? [yNxq] " -n1; do
+            [ -z "$REPLY" ] || echo
             case "$REPLY" in
                 [Yy]) # yes, install
                     run ${n}_before "$@"
@@ -74,6 +81,12 @@ install() {
                 [Nn]|"") # no, skip
                     break
                     ;;
+                [Xx]|"") # skip for future
+                    echo "$dst" >>"$DotfilesSkipList"
+                    echo "$dst skipped.  To undo, run: rm $DotfilesSkipList"
+                    sleep 1
+                    break
+                    ;;
                 [Qq]) # quit, abort installation
                     exit 2
                     ;;
@@ -87,7 +100,7 @@ shname() {
     local n=$1
     # sanitize name
     n=${n#.}
-    n=${n//[\/. -]/_}
+    n=${n//[^A-Za-z0-9_]/_}
     echo "$n"
 }
 run() { [ "`type -t $1 2>/dev/null`" != function ] || (cd; "$@"); }
@@ -103,6 +116,7 @@ safeln() {
     done
 }
 has() { type "$1" &>/dev/null; }
+running() { pgrep "$1" &>/dev/null; }
 
 ###############################################################################
 
@@ -130,8 +144,11 @@ bash_after() {
         xtermtitle
         try+repeat
         auto-tmux
+        tmux-cwd-title
+        tmux-cwd-sync
         git-helper
     )
+    [ -d .bash/plugins/enabled ] ||
     . .bash/plugins/bpm.sh enable "${plugins[@]}"
     )
 }
@@ -142,6 +159,23 @@ if has vim; then
 vim_after() { make -C .vim; }
 install .vimrc
 install .vim
+fi
+
+if has ssh; then
+ssh_Makefile_after() {
+    # install ssh config blocks
+    for c in .dotfiles/.ssh/config.d/*; do
+        install ${c#.dotfiles/}
+    done
+    # backup original and enable everything if this is the first time
+    if ! [ -d .ssh/config.enabled ]; then
+        ! [ -e .ssh/config ] || mv -iv .ssh/config .ssh/config.orig
+        make -C .ssh enable
+    fi
+    # generate .ssh/config
+    make -C .ssh config
+}
+install .ssh/Makefile
 fi
 
 if has git; then
@@ -155,7 +189,12 @@ fi
 install .tmux.conf
 ! has screen ||
 install .screenrc
+
+! top -v 2>&1 | grep -q 'procps version' ||
 install .toprc
+
+! has curl ||
+install .curlrc
 
 if has emacs; then
 emacs_d_elisp_Makefile_after() { make -C .emacs.d/elisp; }
@@ -165,14 +204,55 @@ fi
 
 
 # GUI
+if [ -n "${DISPLAY:-}" ] || running WindowServer; then
 fonts_after() { make -C .fonts; }
 install .fonts.conf
 install .fonts
+fi
 
 
 # Mac OS X
 case $(uname) in Darwin)
+    running-app() { running "$@"; } # XXX workaround for osascript's intermittent slowness
+    #running-app() { [ true = "$(osascript 2>/dev/null -e '
+    #        tell application "System Events" to exists process "'"$1"'"')" ]; }
+    mdfind-has() { [ -n "$(mdfind "$@" | head -1)" ]; }
+    has-executable() { mdfind-has 'kMDItemContentType == public.unix-executable
+                                && kMDItemFSName == "'"$1"'"'; }
+
+    # TODO Mac/Tweaks.sh
+
+    # DefaultKeyBinding.dict
+    # See: http://hints.macworld.com/article.php?story=20060317045211408
+    # See: http://www.hcs.harvard.edu/~jrus/site/cocoa-text.html
+    install Library/KeyBindings/DefaultKeyBinding.dict Mac/KeyBindings/DefaultKeyBinding.dict true
+
+    # install KeyRemap4MacBook settings
+    if running-app KeyRemap4MacBook; then
+        for xml in Mac/KeyRemap4MacBook/*.xml; do
+            [ -e "$xml" ] || continue
+            install Library/"Application Support"/"${xml#Mac/}" "$xml"
+            Library_Application_Support_KeyRemap4MacBook_private_xml_after() {
+                local x="$(mdfind KeyRemap4MacBook_cli.app | head -n 1)/Contents/MacOS/KeyRemap4MacBook_cli"
+                ! [ -x "$x" ] || "$x" reloadxml
+            }
+        done
+    fi
+
+    # install sleepwatcher scripts
+    if has sleepwatcher || running sleepwatcher; then # || has-executable sleepwatcher; then
+        install .sleep  Mac/sleepwatcher/sleep
+        install .wakeup Mac/sleepwatcher/wakeup
+    fi
+
+    # install shell/python/perl scripts
+    for s in Mac/Scripts/*.{sh,py,pl}; do
+        [ -e "$s" ] || continue
+        install Library/"${s#Mac/}" "$s" true true
+    done
+
     # install applescripts
+    if running-app "FastScripts"; then
     cd "$DotfilesRoot"
     scptd=Mac/Scripts/compiled/
     mkdir -p "$scptd"
@@ -213,23 +293,5 @@ case $(uname) in Darwin)
         [ -e "$s" ] || continue
         installscpt "$s"
     done
-    for s in Mac/Scripts/*.sh; do
-        [ -e "$s" ] || continue
-        install Library/"${s#Mac/}" "$s" true true
-    done
-
-    # install KeyRemap4MacBook settings
-    for xml in Mac/KeyRemap4MacBook/*.xml; do
-        [ -e "$xml" ] || continue
-        install Library/"Application Support"/"${xml#Mac/}" "$xml"
-        Library_Application_Support_KeyRemap4MacBook_private_xml_after() {
-            local x="$(mdfind KeyRemap4MacBook_cli.app | head -n 1)/Contents/MacOS/KeyRemap4MacBook_cli"
-            ! [ -x "$x" ] || "$x" reloadxml
-        }
-    done
-
-    # DefaultKeyBinding.dict
-    # See: http://hints.macworld.com/article.php?story=20060317045211408
-    # See: http://www.hcs.harvard.edu/~jrus/site/cocoa-text.html
-    install Library/KeyBindings/DefaultKeyBinding.dict Mac/KeyBindings/DefaultKeyBinding.dict true
+    fi
 ;; esac

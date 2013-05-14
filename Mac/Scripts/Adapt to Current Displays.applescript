@@ -4,25 +4,29 @@
 
 --------------------------------------------------------------------------------------------------------
 
-on Display(w, h)
-	return {screenSize:{w, h}, baseCoords:{0, 0}, screenMargin:{0, 0}}
-end Display
+on Screen(w, h)
+	return {size:{w, h}, origin:{0, 0}, visibleSize:{w, h}, visibleOrigin:{0, 0}}
+end Screen
 
-property macbookDisplay : Display(1680, 1050)
-property syncmaster27inDisplay : Display(1920, 1200)
-property syncmaster30inDisplay : Display(2560, 1600)
-property thunderboltDisplay : Display(2560, 1440)
+property macbookDisplay : Screen(1680, 1050)
+property syncmaster27inDisplay : Screen(1920, 1200)
+property syncmaster30inDisplay : Screen(2560, 1600)
+property cinema30inDisplay : Screen(2560, 1600)
+property thunderboltDisplay : Screen(2560, 1440)
+property detectionTolerance : 100 -- px of alignment error to tolerate
 
 --------------------------------------------------------------------------------------------------------
 
-on use(disp, x, y)
-	return {disp:disp, x:x, y:y}
+on use(screen, x, y)
+	return {screen:screen, x:x, y:y}
 end use
 
 script macbookConfiguration
 	property name : "MacBook"
-	property screens : {horizontal:{use(macbookDisplay, 0, 0)}}
-	property defaultScreen : macbookDisplay
+	property screenLayout : {use(macbookDisplay, 0, 0)}
+	on prepare()
+		my hideDock(true)
+	end prepare
 	on adapt()
 		if my appIsRunning("Safari") then tell application "Safari" to my moveAndResize({h:0.98, wins:my getLargeEnoughWindows(windows)})
 	end adapt
@@ -31,8 +35,10 @@ end script
 script homeConfiguration
 	property name : "Home"
 	-- a SyncMaster 275T is at my home desk
-	property screens : {vertical:{use(syncmaster27inDisplay, 0, 0), use(macbookDisplay, 133, 1200)}}
-	property defaultScreen : syncmaster27inDisplay
+	property screenLayout : {use(syncmaster27inDisplay, 0, 0), use(macbookDisplay, 133, 1200)}
+	on prepare()
+		my hideDock(false)
+	end prepare
 	on adapt()
 		if my appIsRunning("Safari") then tell application "Safari" to my moveAndResize({h:0.95, wins:my getLargeEnoughWindows(windows)})
 	end adapt
@@ -41,8 +47,22 @@ end script
 script gatesOfficeConfiguration
 	property name : "Gates Office"
 	-- I have a SyncMaster 305T in my office :)
-	property screens : {horizontal:{use(syncmaster30inDisplay, 0, 0), use(macbookDisplay, 2560, 1315)}}
-	property defaultScreen : syncmaster30inDisplay
+	property screenLayout : {use(syncmaster30inDisplay, 0, 0), use(macbookDisplay, 2560, 1315)}
+	on prepare()
+		my hideDock(false)
+	end prepare
+	on adapt()
+		if my appIsRunning("Safari") then tell application "Safari" to my moveAndResize({h:0.8, wins:my getLargeEnoughWindows(windows)})
+	end adapt
+end script
+
+script meyerConfiguration
+	property name : "Meyer Library"
+	-- There are 30-in Cinema Displays
+	property screenLayout : {use(cinema30inDisplay, 0, 0), use(macbookDisplay, 440, 1600)}
+	on prepare()
+		my hideDock(false)
+	end prepare
 	on adapt()
 		if my appIsRunning("Safari") then tell application "Safari" to my moveAndResize({h:0.8, wins:my getLargeEnoughWindows(windows)})
 	end adapt
@@ -51,8 +71,7 @@ end script
 script mpkOfficeConfiguration
 	property name : "MPK Office"
 	-- There's an Apple Thunderbolt Display at my workplace
-	property screens : {horizontal:{use(thunderboltDisplay, 0, 0), use(macbookDisplay, 2560, 702)}}
-	property defaultScreen : thunderboltDisplay
+	property screenLayout : {use(thunderboltDisplay, 0, 0), use(macbookDisplay, 2560, 702)}
 	on adapt()
 		if my appIsRunning("Safari") then tell application "Safari" to my moveAndResize({h:0.8, wins:my getLargeEnoughWindows(windows)})
 	end adapt
@@ -60,7 +79,7 @@ end script
 
 property configurations : {}
 property currentConfiguration : macbookConfiguration
-property defaultDisplay : macbookDisplay
+property mainScreen : macbookDisplay
 
 --------------------------------------------------------------------------------------------------------
 
@@ -93,13 +112,21 @@ on run args
 	useConfiguration(macbookConfiguration)
 	useConfiguration(homeConfiguration)
 	useConfiguration(gatesOfficeConfiguration)
+	useConfiguration(meyerConfiguration)
 	useConfiguration(mpkOfficeConfiguration)
 	determineCurrentConfiguration(args)
+	
 	if args is not {} then log {"* Command-Line arguments: "} & args
-	log "* Screen size: " & (actualWidth & " x " & actualHeight)
 	log "* Detected context: " & currentConfiguration's name
-	set screens to (currentConfiguration's screens & {horizontal:{}, vertical:{}})
-	set numScreens to (screens's horizontal's length) + (screens's vertical's length)
+	log "* Screen size: " & (actualWidth & " x " & actualHeight)
+	set screenIndex to 0
+	repeat with placement in currentConfiguration's screenLayout
+		set {w, h} to placement's screen's visibleSize
+		set {x, y} to placement's screen's visibleOrigin
+		log "  * Screen " & screenIndex & ": " & w & " x " & h & " at (" & x & ", " & y & ")"
+		set screenIndex to screenIndex + 1
+	end repeat
+	set numScreens to screenIndex
 	
 	-- move and resize some apps (without knowing the environment)
 	if my appIsRunning("Safari") then tell application "Safari" to my moveAndResize({w:1321, wins:my getLargeEnoughWindows(windows)})
@@ -109,7 +136,7 @@ on run args
 	
 	-- move and resize some apps
 	if my appIsRunning("Mail") then tell application "Mail"
-		my moveAndResize({disp:macbookDisplay, x:0, y:0, w:1532, h:1, wins:windows of message viewers})
+		my moveAndResize({screen:macbookDisplay, x:0, y:0, w:1532, h:1, wins:windows of message viewers})
 		my switchToDesktopNumber(1)
 		activate
 		my keepInAllSpaces(message viewers, numScreens > 1)
@@ -117,22 +144,22 @@ on run args
 	set messagesAppName to "Messages"
 	if (get version of application "Finder") < "10.8" then set messagesAppName to "iChat"
 	if my appIsRunning(messagesAppName) then
-		if my appIsRunning("Mail") then tell application "Mail" to my moveAndResize({disp:macbookDisplay, h:0.9, wins:windows of message viewers})
+		if my appIsRunning("Mail") then tell application "Mail" to my moveAndResize({screen:macbookDisplay, h:0.9, wins:windows of message viewers})
 		tell application messagesAppName
-			my moveAndResize({disp:macbookDisplay, x:0, y:1, h:700, wins:windows})
+			my moveAndResize({screen:macbookDisplay, x:0, y:1, h:700, wins:windows})
 			my keepInAllSpaces(windows, numScreens > 1)
 			try
 				set buddiesWindows to windows whose name is "대화 상대" or name is "Buddies"
-				my moveAndResize({disp:macbookDisplay, x:1, y:0, h:1, wins:buddiesWindows})
+				my moveAndResize({screen:macbookDisplay, x:1, y:0, h:1, wins:buddiesWindows})
 				my keepInAllSpaces(buddiesWindows, yes)
 			end try
 		end tell
 	end if
-	if my appIsRunning("Twitter") then tell application "Twitter" to my moveAndResize({disp:macbookDisplay, x:1, y:0, h:1, wins:windows})
+	if my appIsRunning("Twitter") then tell application "Twitter" to my moveAndResize({screen:macbookDisplay, x:1, y:0, h:1, wins:windows})
 	if my appIsRunning("Adium") then tell application "Adium"
-		if my appIsRunning("Mail") then tell application "Mail" to my moveAndResize({disp:macbookDisplay, h:0.9, wins:windows of message viewers})
-		my moveAndResize({disp:macbookDisplay, x:1, y:0, w:250, h:1, wins:windows})
-		my moveAndResize({disp:macbookDisplay, x:1, y:1, w:0.6, h:0.75, wins:chat windows})
+		if my appIsRunning("Mail") then tell application "Mail" to my moveAndResize({screen:macbookDisplay, h:0.9, wins:windows of message viewers})
+		my moveAndResize({screen:macbookDisplay, x:1, y:0, w:250, h:1, wins:windows})
+		my moveAndResize({screen:macbookDisplay, x:1, y:1, w:0.6, h:0.75, wins:chat windows})
 		my keepInAllSpaces(chat windows, numScreens > 1)
 	end tell
 	
@@ -167,8 +194,10 @@ on determineCurrentConfiguration(args)
 	set currentConfiguration to macbookConfiguration -- default
 	if (count args) > 0 and (exists (configurations whose name = item 1 of args)) then
 		set currentConfiguration to first item of (configurations whose name = item 1 of args)
+		currentConfiguration's prepare()
 	else
 		repeat with config in configurations
+			config's prepare()
 			if actualScreensMatch(config) then
 				set currentConfiguration to config
 				exit repeat
@@ -176,50 +205,64 @@ on determineCurrentConfiguration(args)
 		end repeat
 	end if
 	
-	-- adjust other properties
-	set defaultDisplay to currentConfiguration's defaultScreen
-	adjustDisplayCoordinatesWithDock(defaultDisplay)
+	-- adjust display properties
+	set NSScreenWorked to false
+	set screenIndex to 0
+	repeat with placement in currentConfiguration's screenLayout
+		set screen to placement's screen
+		set {w, h} to screen's size
+		set screenDim to w & "x" & h
+		set screenNumber to ""
+		try
+			set screenNumber to screen's screenNumber
+		end try
+		set cmd to "~/Library/Scripts/NSScreen.py " & screenDim & " " & screenNumber & " -- X Y  Xvisible Yvisible  Wvisible Hvisible"
+		#log cmd
+		set screenInfo to do shell script cmd
+		set delimiter to the text item delimiters
+		set the text item delimiters to ASCII character 13
+		if (count (text items of screenInfo)) = 6 then
+			#log {cmd, text items of screenInfo}
+			set {x,y, xv,yv, wv,hv} to text items of screenInfo
+			set placement's x to x as number
+			set placement's y to y as number
+			set screen's visibleOrigin to {xv as number, yv as number}
+			set screen's visibleSize to {wv as number, hv as number}
+			set NSScreenWorked to true
+		end if
+		set the text item delimiters to delimiter
+		set screenIndex to screenIndex + 1
+	end repeat
+	
+	set mainScreen to first item's screen of currentConfiguration's screenLayout
+	
+	# use a workaround if NSScreen.py didn't work
+	if not NSScreenWorked then adjustScreenWithDock(mainScreen)
 	
 	return currentConfiguration
 end determineCurrentConfiguration
 
-
 -- check if actual screen size matches config
-property detectionTolerance : 10 -- px of alignment error to tolerate
 on actualScreensMatch(config)
-	set screens to (config's screens) & {horizontal:null, vertical:null}
-	-- first check actual width with horizontal screen config
-	set hz to screens's horizontal
-	if hz is not null then
-		set totalW to 0
-		set totalH to 0
-		repeat with screen in hz
-			set disp to screen's disp
-			set disp's baseCoords to {screen's x, screen's y}
-			set disp's screenMargin to {2, 2}
-			set totalW to totalW + (item 1 of disp's screenSize)
-			set newH to (item 2 of disp's screenSize) + (item 2 of disp's baseCoords)
-			if newH > totalH then set totalH to newH
-		end repeat
-		if abs(totalW - actualWidth) > detectionTolerance or abs(totalH - actualHeight) > detectionTolerance then return false
-	end if
-	-- then check if actual height matches vertical screen config
-	set vt to screens's vertical
-	if vt is not null then
-		set totalW to 0
-		set totalH to 0
-		repeat with screen in vt
-			set disp to screen's disp
-			set disp's baseCoords to {screen's x, screen's y}
-			set disp's screenMargin to {2, 2}
-			set newW to (item 1 of disp's screenSize) + (item 1 of disp's baseCoords)
-			if newW > totalW then set totalW to newW
-			set totalH to totalH + (item 2 of disp's screenSize)
-		end repeat
-		if abs(totalW - actualWidth) > detectionTolerance or abs(totalH - actualHeight) > detectionTolerance then return false
-	end if
-	return true
+	set {minX,minY, maxX,maxY} to computeBounds(config's screenLayout)
+	set {w,h} to {maxX - minX, maxY - minY}
+	return abs(w - actualWidth) <= detectionTolerance and abs(h - actualHeight) <= detectionTolerance
 end actualScreensMatch
+
+on computeBounds(layout)
+	set {minX,minY, maxX,maxY} to {0,0, 0,0}
+	repeat with placement in layout
+		set screen to placement's screen
+		set screen's origin to {placement's x, placement's y}
+		set {w,h} to screen's size
+		set {x,y} to screen's origin
+		if minX > x     then set minX to x
+		if minY > y     then set minY to y
+		if maxX < x + w then set maxX to x + w
+		if maxY < y + h then set maxY to y + h
+	end repeat
+	return {minX,minY, maxX,maxY}
+end computeBounds
 
 on abs(v)
 	if v < 0 then return -v
@@ -228,22 +271,24 @@ end abs
 
 -- How to take Dock's size and position into account
 property menubarHeight : 22 -- will probably stay constant, I guess
-to adjustDisplayCoordinatesWithDock(displayInfo)
+to adjustScreenWithDock(screen)
 	tell application "System Events" to tell process "Dock"
 		set {dockX, dockY} to position in list 1
 		set {dockW, dockH} to size in list 1
 	end tell
+	set {x,y} to screen's origin
+	set {w,h} to screen's size
 	if dockX = 0 then -- dock is at left
-		set displayInfo's baseCoords to {dockW, menubarHeight}
-		set displayInfo's screenMargin to displayInfo's baseCoords
-	else if dockY + dockH ≥ item 2 of displayInfo's screenSize then
-		set displayInfo's baseCoords to {0, menubarHeight}
-		set displayInfo's screenMargin to {0, menubarHeight + dockH}
+		set screen's visibleOrigin to {dockW, menubarHeight}
+		set screen's visibleSize to {w -dockW, h -menubarHeight}
+	else if dockY + dockH ≥ item 2 of screen's size then
+		set screen's visibleOrigin to {0, menubarHeight}
+		set screen's visibleSize to {w, h -menubarHeight -dockH}
 	else -- dock is at right
-		set displayInfo's baseCoords to {0, menubarHeight}
-		set displayInfo's screenMargin to {dockW, menubarHeight}
+		set screen's visibleOrigin to {0, menubarHeight}
+		set screen's visibleSize to {w -dockW, h -menubarHeight}
 	end if
-end adjustDisplayCoordinatesWithDock
+end adjustScreenWithDock
 
 
 -- How to check if application is running
@@ -370,16 +415,21 @@ For x,y,w,h, you can pass:
 *)
 to moveAndResize(args)
 	-- Learned how to augment default values to a record from Nigel Garvey: http://macscripter.net/viewtopic.php?pid=139333#p139333
-	set args to args & {wins:{}, disp:defaultDisplay, x:null, y:null, w:null, h:null}
+	set args to args & {wins:{}, screen:mainScreen, x:null, y:null, w:null, h:null}
 	set wins to wins of args
-	set displayInfo to disp of args
+	set screen to screen of args
 	set newX to x of args
 	set newY to y of args
 	set newW to w of args
 	set newH to h of args
-	set {screenWidth, screenHeight} to displayInfo's screenSize
-	set {marginH, marginV} to displayInfo's screenMargin
-	set {offsetX, offsetY} to displayInfo's baseCoords
+	set {screenWidth, screenHeight} to screen's size
+	try
+		set {screenWidth, screenHeight} to screen's visibleSize
+	end try
+	set {offsetX, offsetY} to screen's origin
+	try
+		set {offsetX, offsetY} to screen's visibleOrigin
+	end try
 	repeat with win in wins
 		-- see where window win is and how large it is
 		try
@@ -391,8 +441,8 @@ to moveAndResize(args)
 				set {origW, origH} to get size of win
 			end tell
 		end try
-		set effWidth to screenWidth - marginH
-		set effHeight to screenHeight - marginV
+		set effWidth to screenWidth
+		set effHeight to screenHeight
 		
 		-- first, figure out width and height
 		set _w to origW
@@ -477,13 +527,67 @@ end keepInAllSpaces
 
 
 -- switchToDesktopNumber -- jumps to the desktop number
--- This requires key mappings of ⌃⌥1, ⌃⌥2, ..., ⌃⌥0 from System Preferences
 on switchToDesktopNumber(num)
-	-- key codes for 1 thru 9, and 0
-	log "switching to desktop " & num
-	set keyCodeMapping to {18, 19, 20, 21, 23, 22, 26, 28, 25, 29}
-	set k to item num of keyCodeMapping
-	tell application "System Events" to key code k using {control down, option down}
+	-- find key code from AppleSymbolicHotKeys for switching to Space 1 thru 9
+	set symbolicKeyForSwitchingToSpace1 to 118
+	try
+		# See: http://hintsforums.macworld.com/showthread.php?t=114785
+		# See: http://krypted.com/mac-os-x/defaults-symbolichotkeys/
+		tell application "System Events"
+			# See: http://www.j-schell.de/node/316
+			set plist to property list file "~/Library/Preferences/com.apple.symbolichotkeys.plist"
+			set AppleSymbolicHotKeys to plist's property list item "AppleSymbolicHotKeys"
+			set symkeyName to (symbolicKeyForSwitchingToSpace1 + num-1) as string
+			set symkey to AppleSymbolicHotKeys's property list item symkeyName
+			set symkeyValue to symkey's property list item "value"
+			if (symkey's property list item "enabled"'s value) and (symkeyValue's property list item "type"'s value) is "standard" then
+				try
+					set {ascii, code, m} to symkeyValue's property list item "parameters"'s value
+					if not 0 = my BWAND(m, 2^17) then key down shift
+					if not 0 = my BWAND(m, 2^18) then key down control
+					if not 0 = my BWAND(m, 2^19) then key down option
+					if not 0 = my BWAND(m, 2^20) then key down command
+					tell me to log "switching to desktop " & num
+					key code code
+				on error err
+					tell me to log "Error: cannot switch to desktop " & num & ": " & err
+				end try
+				key up command
+				key up option
+				key up control
+				key up shift
+				return true
+			end if
+		end tell
+	end try
+	tell me to log "Error: no key bound for switching to desktop " & num
 end switchToDesktopNumber
+
+# See: https://gist.github.com/bassx/2227137
+(* __int1 : integer
+ * __int2 : integer
+ * Integers are from 0 till 2 ^ 31 - 1. When integers become greater than 2 ^ 31 then they will become a real and the handler wont't work.
+ *)
+on BWAND(__int1, __int2)
+	set theResult to 0
+	repeat with bitOffset from 30 to 0 by -1
+		if __int1 div (2 ^ bitOffset) = 1 and __int2 div (2 ^ bitOffset) = 1 then
+			set theResult to theResult + 2 ^ bitOffset
+		end if
+		set __int1 to __int1 mod (2 ^ bitOffset)
+		set __int2 to __int2 mod (2 ^ bitOffset)
+	end repeat
+	return theResult as integer
+end BWAND
+
+-- hideDock -- toggle autohide for Dock
+on hideDock(hide)
+	tell application "System Events"
+		tell dock preferences
+			set autohide to hide
+			set magnification to (not hide)
+		end tell
+	end tell
+end hideDock
 
 # vim:ft=applescript:sw=4:ts=4:sts=4:noet

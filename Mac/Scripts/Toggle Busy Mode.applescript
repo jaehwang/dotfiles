@@ -1,5 +1,5 @@
 #!/usr/bin/osascript
-# Toggle Meeting Mode by switching on/off some apps:
+# Toggle Busy Mode by switching on/off some apps:
 #  e.g., Notification Center, Growl, Messages, and Caffeine
 # 
 # Author: Jaeho Shin <netj@cs.stanford.edu>
@@ -28,7 +28,7 @@ on run
 				tell application "Messages"
 					if isDedicated then
 						set status to away
-						set status message to "in a meeting… 👥⌛🔕"
+						set status message to "busy… ⌛🔕💭👥"
 					else
 						log in every service
 						set status to available
@@ -50,7 +50,13 @@ on run
 			
 			-- Toggle Caffeine
 			try
-				if not (exists (processes whose name is "Caffeine")) then tell application "Caffeine" to activate
+				if not (exists (processes whose name is "Caffeine")) then
+					if isDedicated then
+						tell application "Caffeine" to activate
+					else
+						error "No need to activate Caffeine"
+					end if
+				end if
 				tell process "Caffeine"
 					set caffeineIcon to first menu bar item of menu bar 1
 					key down command
@@ -77,4 +83,4 @@ on cliclick on target
 	delay 1.0E-4
 end cliclick
 
-# vim:sw=4:sts=4:ts=4:noet
+# vim:sw=4:sts=4:ts=4:noet:ft=applescript

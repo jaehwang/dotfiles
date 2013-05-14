@@ -83,7 +83,7 @@ endif
 
 " let xterm title work even in screen or tmux
 " From http://vim.wikia.com/wiki/Automatically_set_screen_title
-if &term == "screen"
+if &term =~ "^screen.*"
   set t_ts=]0;
   set t_fs=
 elseif &term == "xterm-color" || &term == "xterm-256color"
@@ -98,7 +98,7 @@ if has("gui_running")
   set guioptions-=b
   set guioptions-=t
   set guioptions-=T
-  set guifont=Envy_Code_R:h16,Consolas:h16,Menlo:h16,Monaco:h16
+  set guifont=Envy_Code_R:h13,Consolas:h12,Menlo:h12,Monaco:h12
   set t_Co=256
   if has("gui_macvim")
     set transparency=5
@@ -116,7 +116,7 @@ endif
 " Mac OS X (>=10.7) Terminal.app's Title Icon and Drag & Drop support
 "  See: http://www.macosxautomation.com/lion/terminal.html
 "  See: /private/etc/bashrc's update_terminal_cwd
-if !has("gui_running") && $TERM_PROGRAM == "Apple_Terminal" && $TERM_PROGRAM_VERSION >= 297
+if !has("gui_running") && &term !~ "^screen.*" && $TERM_PROGRAM == "Apple_Terminal" && $TERM_PROGRAM_VERSION >= 297
   set title titlestring=%(%m\ %)%((%{expand(\"%:~:h\")})%)%a
   set icon iconstring=%{&t_IE}]7;file://%{hostname()}%{expand(\"%:p\")}%{&t_IS}
   set iconstring+=VIM
@@ -131,21 +131,34 @@ endif
 map Q gq
 
 " quickly display mappings of <C-\>, <Space>, <Leader>
-nnoremap <C-\><C-l>     :map <C-\><CR>
 nnoremap <Space><C-l>   :map <S<BS>Space><CR>
 nnoremap <Leader><C-l>  :map <L<BS>Leader><CR>
 
 
 " Mode Toggler Keys
-fun! ModeToggleKey(mode, lhs)
-  for [prefix,cmd] in [['<C-\>','setlocal'], ['<C-\><C-G>', 'set']]
-    exec 'nnoremap '.prefix.a:lhs.' :'.cmd.' '.a:mode.'!<CR>'
-          \                       .':'.cmd.' '.a:mode.'?<CR>'
-    exec 'imap     '.prefix.a:lhs.' <C-\><C-N>'.prefix.a:lhs.'gi'
-    exec 'vmap     '.prefix.a:lhs.' <C-\><C-N>'.prefix.a:lhs.'gv'
-  endfor
+let s:modeToggleKeys = {}
+fun! ModeToggleKey(...)
+  let fmt = '%-20s <C-\>%s'
+  if a:0 == 2
+    let otn = a:1
+    let lhs = a:2
+    let s:modeToggleKeys[otn] = lhs
+    for [prefix,cmd] in [['<C-\>','setlocal'], ['<C-\><C-G>', 'set']]
+      exec 'nnoremap '.prefix.lhs.' :'.cmd.' '.otn.'!<CR>'
+            \                     .':'.cmd.' '.otn.'?<CR>'
+      exec 'imap     '.prefix.lhs.' <C-\><C-N>'.prefix.lhs.'gi'
+      exec 'vmap     '.prefix.lhs.' <C-\><C-N>'.prefix.lhs.'gv'
+    endfor
+  elseif a:0 == 1
+    echo printf(fmt, a:1, s:modeToggleKeys[a:1])
+  else
+    for otn in sort(keys(s:modeToggleKeys))
+      echo printf(fmt, otn, s:modeToggleKeys[otn])
+    endfor
+  endif
 endfun
-command! -nargs=+ -complete=option ModeToggleKey  :call ModeToggleKey(<f-args>)
+command! -nargs=* -complete=option ModeToggleKey  :call ModeToggleKey(<f-args>)
+nnoremap <C-\><C-l>     :ModeToggleKey<CR>
 
 " toggle options with <C-\> followed by the individual key
 ModeToggleKey autoread        <C-e>
@@ -157,6 +170,7 @@ ModeToggleKey cursorline      :
 ModeToggleKey cursorcolumn    ,
 ModeToggleKey diff            <C-d>
 ModeToggleKey foldenable      <C-z>
+ModeToggleKey hlsearch        *
 ModeToggleKey list            <Space>
 ModeToggleKey list            <C-Space>
 ModeToggleKey list            <C-@>
@@ -173,10 +187,20 @@ ModeToggleKey winfixwidth     \|
 ModeToggleKey winfixheight    _
 ModeToggleKey wrap            <C-\>
 
-" Fold
-nnoremap <Space>z      :set foldmethod=indent<CR>
-nnoremap <Space>Z      :set foldmethod=syntax<CR>
-nnoremap <Space><C-z>  :set foldmethod=manual<CR>
+" helper function to cycle thru options
+fun! s:cycle(opt, values)
+  exec "let oldValue = &". a:opt
+  let idx = (index(a:values, oldValue) + 1) % len(a:values)
+  let newValue = a:values[idx]
+  exec "setlocal ". a:opt ."=". newValue
+  exec "setlocal ". a:opt ."?"
+endfun
+
+" Fold method
+nnoremap <Space>z      :call <SID>cycle("foldmethod", split("manual indent syntax"))<CR>
+
+" Virtualedit
+nnoremap <Space>v      :call <SID>cycle("virtualedit", insert(split("all block insert onemore"), ""))<CR>
 
 " Fix syntax highlighting by doing it from start of file
 " See: http://vim.wikia.com/wiki/Fix_syntax_highlighting
@@ -188,7 +212,7 @@ nnoremap <Space>*      :nohlsearch<CR>
 " Easy open and close of the QuickFix window
 nnoremap <Space>q      :copen<CR>
 nnoremap <Space>l      :lopen<CR>
-au! BufWinEnter *
+au BufWinEnter *
       \ if &buftype == "quickfix" |
       \   nnoremap <buffer> <silent> q :close<CR>|
       \ endif
@@ -223,6 +247,7 @@ iab jshin>   Jaeho.Shin@Stanford.EDU
 " Frequently typed lines.
 iab Created:    Created: <C-R>=system("date +%Y-%m-%d")
 
+
 "------------------------------------------------------------------------------
 " File-type specific settings.
 "------------------------------------------------------------------------------
@@ -247,7 +272,7 @@ if has("autocmd")
   " Play nice with crontab: "temp file must be edited in place"
   autocmd FileType crontab setlocal nobackup nowritebackup
 
-  " Don't worry about spelling in Git commit messages
+  " Don't worry about typos and spelling errors in Git commit messages
   autocmd FileType gitcommit setlocal spell
 
 endif " has("autocmd")
@@ -264,6 +289,13 @@ endfor
 if exists("vimpager")
   set timeout timeoutlen=0
 endif
+
+
+" Use a split window for viewing man-pages
+runtime ftplugin/man.vim
+nnoremap K  :Man <C-R>=expand("<cword>")<CR><CR>
+nnoremap gK K
+au FileType man nnoremap <buffer> q <C-w>q
 
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""

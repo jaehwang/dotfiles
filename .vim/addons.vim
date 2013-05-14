@@ -19,7 +19,12 @@ fun! SetupAddons()
   " light-lo: spring autumn sienna
   " fun: matrix borland golden camo
   " bright: summerfruit256 buttercream PapayaWhip nuvola habiLight fruit eclipse earendel
-  ActivateAddons Colour_Sampler_Pack molokai
+  ActivateAddons hybrid jellybeans molokai Colour_Sampler_Pack
+    let g:jellybeans_overrides = {
+          \    'Todo': { 'guifg': '101010', 'guibg': 'fad07a',
+          \              'ctermfg': 'Black', 'ctermbg': 'Yellow',
+          \              'attr': 'bold' },
+          \}
   " scroll among my favorites with VimTip341
   ActivateAddons git:git://gist.github.com/1432015.git
     let s:mySetColorsSet = []
@@ -34,20 +39,20 @@ fun! SetupAddons()
     endfun
     command! -nargs=+ -bar -bang AddColorSet  call s:addColorSet(<bang>0, <f-args>)
     if has("gui_running")
-      AddColorSet  'darkLo'     jellybeans     desertEx    lucius       camo      dante     candy           "      brookstream
-      AddColorSet  'creativity' spring         clarity     navajo-night sea       oceandeep breeze          "      dusk        tabula     darkblue2
-      AddColorSet  'darkHi'     fruity         oceanblack  jammy        northland lettuce   molokai         "      neon        vibrantink vividchalk colorer torte
-      AddColorSet  'bright'     summerfruit256 buttercream PapayaWhip   nuvola    habiLight fruit           "      eclipse     earendel
-      AddColorSet! 'precision'  autumn         railscasts  Guardian     candycode inkpot    ChocolateLiquor
-      AddColorSet  'diff'       xoria256       candycode   jellybeans   "         inkpot    ChocolateLiquor lucius railscasts  northland  blacksea
+      AddColorSet  'darkLo'     hybrid         desertEx    lucius       camo      dante      candy           " jellybeans brookstream
+      AddColorSet  'creativity' spring         clarity     navajo-night sea       oceandeep  breeze          " dusk       tabula      darkblue2
+      AddColorSet  'darkHi'     fruity         oceanblack  jammy        northland lettuce    molokai         " neon       vibrantink  vividchalk colorer  torte
+      AddColorSet  'bright'     summerfruit256 buttercream PapayaWhip   nuvola    habiLight  fruit           " eclipse    earendel
+      AddColorSet! 'precision'  autumn         railscasts  Guardian     candycode inkpot     ChocolateLiquor
+      AddColorSet  'diff'       xoria256       candycode   hybrid                                            " jellybeans inkpot          ChocolateLiquor lucius     railscasts  northland  blacksea
       AddColorSet  'diffLight'  PapayaWhip     taqua       silent
     else
       if &t_Co >= 256
         " many color schemes only work well on GUI
-        AddColorSet 'hi'     jellybeans inkpot          molokai         navajo-night
-        AddColorSet 'lo'     lucius          lettuce         dante        wombat256
-        AddColorSet 'bright' tabula     summerfruit256
-        AddColorSet 'diff'   xoria256 calmar256-light maroloccio inkpot ChocolateLiquor " candycode calmar256-dark PapayaWhip lettuce blacksea
+        AddColorSet 'lo'     hybrid         wombat256       lettuce    dante
+        AddColorSet 'hi'     jellybeans     inkpot          molokai    navajo-night
+        AddColorSet 'bright' summerfruit256 lucius          tabula
+        AddColorSet 'diff'   xoria256       calmar256-light maroloccio inkpot       ChocolateLiquor " candycode calmar256-dark PapayaWhip lettuce blacksea
         " desertEx colorer vividchalk candycode nuvola earendel
       else
         AddColorSet 'fallback' default
@@ -75,17 +80,19 @@ fun! SetupAddons()
         let g:mySetColors = g:mySetColorsNormal
         exec 'colorscheme' g:prior_colors_name
       endif
-      " XXX if exists("*Powerline") | call Powerline(winnr(), winnr()) | endif
+      if exists("*Powerline") | doautoall Powerline BufEnter,ColorScheme | endif
     endfun
     command! DetectDiffColorScheme call s:DetectDiffColorScheme()
     autocmd FilterWritePost,BufEnter,WinEnter,WinLeave *  DetectDiffColorScheme
     nnoremap <Space>d :diffoff \| DetectDiffColorScheme<CR>
-  if has("gui_running")
+  if has("gui_running") && 0
     ActivateAddons powerline
+
     set laststatus=2 noshowmode showcmd
     let &guifont = join(map(split(&guifont,","),
           \ 'split(v:val,":")[0]." for Powerline:".split(v:val,":")[1]'),",")
-    "let g:Powerline_symbols = 'fancy'
+    " using colorscheme from localvimrc can screw up powerline, hence below:
+    autocmd VimEnter * doautoall Powerline BufEnter,ColorScheme
   endif
 
 
@@ -95,11 +102,32 @@ fun! SetupAddons()
     let g:gundo_close_on_revert = 1
     nnoremap <Space>u :GundoToggle<CR>
   endif
-  ActivateAddons bufexplorer.zip
-    nnoremap <Space>b :BufExplorerHorizontalSplit<CR>
+  "ActivateAddons bufexplorer.zip
+  ActivateAddons tselectbuffer
+    nnoremap <Space>b :TSelectBuffer<CR>
   ActivateAddons Tagbar
     nnoremap <Space>t :TagbarOpenAutoClose<CR>
     nnoremap <Space>T :TagbarToggle<CR>
+  ActivateAddons ack
+  fun! s:jumpToTagWithQuickFix(w)
+    exec "ltag" a:w
+    keepjumps call setqflist(getloclist(0))
+    " TODO copen | let w:quickfix_title = ":tag ". a:w | close
+    let @/ = "\\<". a:w ."\\>" | keepjumps norm n
+    set hlsearch
+  endfun
+  fun! s:ackWord(w)
+    exec "keepjumps Ack!" "'\\b". a:w ."\\b'"
+    let @/ = "\\<". a:w ."\\>" | keepjumps norm n
+    set hlsearch
+    cfirst
+  endfun
+  if has("gui")
+    " Ctrl-Click in MacVim needs: defaults write org.vim.MacVim MMTranslateCtrlClick 0
+    " See: http://stackoverflow.com/a/10148278/390044
+    noremap <C-LeftMouse>  <C-\><C-N><LeftMouse>:call <SID>jumpToTagWithQuickFix(expand("<cword>"))<CR>
+    noremap <C-RightMouse> <C-\><C-N><LeftMouse>:call <SID>ackWord(expand("<cword>"))<CR>
+  endif
   " unimpaired quickfix access with [q, ]q, [Q, ]Q
   ActivateAddons unimpaired
     " Eclipse-style movement
@@ -117,8 +145,9 @@ fun! SetupAddons()
     " Align%294's \m= collides with Mark%2666 unless already mapped
     map <Leader>tm= <Plug>AM_m=
   ActivateAddons Align%294
-  ActivateAddons surround
-  ActivateAddons repeat
+  ActivateAddons surround repeat
+  ActivateAddons speeddating
+  ActivateAddons commentary
   ActivateAddons vim-visual-star-search
   ActivateAddons EasyMotion
     let g:EasyMotion_leader_key = '<Space>w'
@@ -175,8 +204,8 @@ fun! SetupAddons()
     nnoremap ,, ,
     xnoremap ,, ,
     onoremap ,, ,
+  ActivateAddons abolish
 
-  "ActivateAddons ack
   "ActivateAddons slime
   ActivateAddons The_NERD_tree
     nnoremap <Space>e :NERDTreeFind<CR>
@@ -189,9 +218,20 @@ fun! SetupAddons()
     autocmd BufEnter NERD_tree_* map <buffer> <Space><Space> go
     autocmd BufEnter NERD_tree_* map <buffer> <Space>s       gi
     autocmd BufEnter NERD_tree_* map <buffer> <Space>v       gv
+  "ActivateAddons FuzzyFinder
+  "  nnoremap <Space>f :FufFileWithCurrentBufferDir<CR>
+  "ActivateAddons Command-T
+  "  nnoremap <Space>f :CommandT<CR>
+  ActivateAddons ctrlp
+    let g:ctrlp_map = '<c-p>'
+    let g:ctrlp_cmd = 'CtrlPMixed'
+    let g:ctrlp_mruf_relative = 1
+    let g:ctrlp_custom_ignore = {
+          \ "dir": '\v[\/]\@prefix\@$'
+          \ }
   ActivateAddons renamer
   ActivateAddons recover
-  ActivateAddons snipmate
+  "ActivateAddons snipmate
   "ActivateAddons vmark.vim_Visual_Bookmarking " XXX beware: <F2>/<F3> is overrided
   " TODO let b:vm_guibg = yellow
   "if has("ruby")
@@ -219,10 +259,15 @@ fun! SetupAddons()
     nnoremap <Space>gL :Glog --<CR>
     nnoremap <Space>ge :Gedit<CR>
     nnoremap <Space>gE :Gedit 
+  ActivateAddons gitv
+    nnoremap <Space>gv :Gitv --all<CR>
+    nnoremap <Space>gV :Gitv! --all<CR>
+    vnoremap <Space>gV :Gitv! --all<CR>
+    set lazyredraw
   ActivateAddons git:git://github.com/airblade/vim-gitgutter.git
     let g:gitgutter_enabled = 1
-    nnoremap <Space><C-g><C-g> :ToggleGitGutter<CR>
-    nnoremap <Space><C-g>g     :ToggleGitGutterLineHighlights<CR>
+    nnoremap <Space><C-g><C-g> :GitGutterToggle<CR>
+    nnoremap <Space><C-g>g     :GitGutterLineHighlightsToggle<CR>
     nnoremap ]g :GitGutterNextHunk<CR>
     nnoremap [g :GitGutterPrevHunk<CR>
   ActivateAddons Gist WebAPI
@@ -249,25 +294,25 @@ fun! SetupAddons()
       \ setlocal spell |
     if has("mac")
       au FileType markdown
-        \ nnoremap <D-e> :!open -a Marked '%'<CR><CR>|
+        \ nnoremap <D-e> :exec "!open -a Marked ".shellescape(expand("%"))<CR><CR>|
         \ noremap! <D-e> <C-\><C-N><D-e>gi|
         \ call sparkup#Setup()|
     endif
   ActivateAddons JSON
-    au BufRead,BufNewFile *.json setfiletype json
+    au BufEnter *.json setfiletype json
 
   ActivateAddons vim-coffee-script
-    au BufRead,BufNewFile *.coffee syntax sync fromstart
+    au BufEnter *.coffee syntax sync fromstart
     " CoffeeScript autocompilation
     "autocmd BufWritePost *.coffee silent CoffeeMake! | cwindow
   ActivateAddons jade
   ActivateAddons applescript
-    au BufRead,BufNewFile *.applescript setfiletype applescript
+    au BufEnter *.applescript setfiletype applescript
   ActivateAddons vim-addon-scala
     " Scala (See: http://mdr.github.com/scalariform/)
     au BufEnter *.scala setl formatprg=scalariform\ --forceOutput
   ActivateAddons octave%3600
-    au BufRead,BufNewFile *.oct,*.m setlocal filetype=octave
+    au BufEnter *.oct,*.m setlocal filetype=octave
 
   " Vim-LaTeX is a comprehensive plugin for working with LaTeX
   " See: http://vim-latex.sourceforge.net/documentation/latex-suite/
@@ -279,7 +324,7 @@ fun! SetupAddons()
     fun! s:LaTeX_Build()
       norm m`m[
       let oldmore=&more | set nomore
-      exec "make! ".escape(Tex_GetMainFileName(),' \')
+      exec "silent make! ".escape(Tex_GetMainFileName(),' \')
       let &more=oldmore
       norm m]g``
     endfun
@@ -329,9 +374,9 @@ fun! SetupAddons()
         " Use Skim as our PDF viewer and latexmk to compile
         TCTarget pdf
         let g:Tex_ViewRule_pdf="Skim"
-        " In Skim's preferences, use the following for PDF-TeX Sync Support
-        " Command: /opt/homebrew/bin/mvim
-        " Arguments: $(osascript -e 'tell application "MacVim" to get name of front window' | sed 's/.* - /--servername /') --remote-silent +"%line|exec 'norm zz'|silent!.foldopen!|" +"norm zz" "%file"
+        " In Skim's preferences, use the following for Custom PDF-TeX Sync support
+        " Command: /Users/YOURUSERNAME/.vim/synctex.skim-macvim.sh
+        " Arguments: "%file" %line /path/to/mvim/command
         " Command must be a full path name to mvim unless you put it in a system location such as /usr/bin.
         " Arguments has a fancy applescript to open on the active MacVim window.
         " some key bindings with Command-key
@@ -353,7 +398,7 @@ fun! SetupAddons()
         let keyMappings[  '<D-CR>'] = 'LaTeXBuild'
         let keyMappings['<S-D-CR>'] = 'LaTeXBuildAndView'
         for [key,cmd] in items(keyMappings)
-          exec 'nnoremap <buffer> '.key.'           :'.cmd.'<CR><CR>:cwindow<CR>'
+          exec 'nnoremap <buffer> '.key.'           :'.cmd.'<CR>:cwindow<CR>'
           exec 'xnoremap <buffer> '.key.' <C-\><C-N>:'.cmd.'<CR><CR>gv'
           exec 'snoremap <buffer> '.key.' <C-\><C-N>:'.cmd.'<CR><CR>gv<C-G>'
           exec 'inoremap <buffer> '.key.' <C-\><C-N>:'.cmd.'<CR><CR>gi'
