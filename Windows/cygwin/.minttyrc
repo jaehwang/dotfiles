@@ -1,0 +1,23 @@
+BoldAsFont=no
+Transparency=off
+CursorType=block
+CursorBlinks=no
+FontHeight=11
+BackgroundColour=35,0,49
+
+Black=      0,0,0
+Red=        204,102,102
+Green=      51,204,102
+Yellow=     204,204,102
+Blue=       51,102,204
+Magenta=    204,51,102
+Cyan=       102,204,204
+White=      128,128,128
+BoldBlack=  238,221,255
+BoldRed=    255,153,102
+BoldGreen=  102,255,153
+BoldYellow= 255,255,153
+BoldBlue=   102,153,255
+BoldMagenta=255,102,153
+BoldCyan=   153,255,255
+BoldWhite=  255,255,255
